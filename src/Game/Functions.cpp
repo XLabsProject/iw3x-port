@@ -272,12 +272,4 @@ namespace Game
 			bounds->midPoint[i] = bounds->halfSize[i] + mins[i];
 		}
 	}
-
-	namespace IW4
-	{
-		void Bounds::compute(vec3_t mins, vec3_t maxs)
-		{
-			ConvertBounds(this, mins, maxs);
-		}
-	}
 }
