@@ -351,31 +351,29 @@ namespace Components
 		xmodel.numCollSurfs = model->numCollSurfs;
 		xmodel.contents = model->contents;
 
-		if (model->boneInfo)
+		xmodel.boneInfo = allocator.allocateArray<Game::IW4::XBoneInfo>(model->numBones);
+
+		for (int i = 0; i < xmodel.numBones; i++)
 		{
-			xmodel.boneInfo = allocator.allocateArray<Game::IW4::XBoneInfo>(model->numBones);
+			memcpy(&xmodel.boneInfo[i].bounds, &model->boneInfo[i].bounds, sizeof(Game::IW3::Bounds));
 
-			for (char i = 0; i < model->numBones; ++i)
-			{
-				Game::IW4::XBoneInfo* target = &xmodel.boneInfo[i];
-				Game::IW3::XBoneInfo* source = &model->boneInfo[i];
+			xmodel.boneInfo[i].packedBounds.compute();
+			xmodel.boneInfo[i].radiusSquared = model->boneInfo[i].radiusSquared;
 
-				target->radiusSquared = source->radiusSquared;
+			//shield fix - special thanks to Laupetin who provided helpful information
+			std::string bone = reinterpret_cast<const char*>(*reinterpret_cast<char**>(0x14E8A04) + 12 * model->boneNames[i] + 4);	//convert bone names to string, zonetool had a function for this but was lazy and just applied the function's code directly instead of porting said function.
 
-				target->bounds.compute(source->bounds[0], source->bounds[1]);
-				target->bounds.midPoint[0] += source->offset[0];
-				target->bounds.midPoint[1] += source->offset[1];
-				target->bounds.midPoint[2] += source->offset[2];
-			}
+			if (bone == "tag_weapon_left" || bone == "tag_shield_back")	//check for tags that should have the HITLOC_SHIELD hit location
+				xmodel.partClassification[i] = 0x13;	//restore bone info to HITLOC_SHIELD. COD4 doesn't have this so the information was lost while porting the model to that game.
 		}
 
 		xmodel.radius = model->radius;
 
-		xmodel.bounds.compute(model->mins, model->maxs);
-
 		xmodel.memUsage = model->memUsage;
 		xmodel.bad = model->bad;
 		xmodel.physPreset = model->physPreset;
+
+		xmodel.bounds.compute(model->mins, model->maxs);
 
 		if (model->physGeoms)
 		{
