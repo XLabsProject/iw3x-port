@@ -54,39 +54,49 @@ namespace Components
 			return;
 		}
 
+		rapidjson::Document output(rapidjson::kObjectType);
+		auto& allocator = output.GetAllocator();
+		Utils::Memory::Allocator strDuplicator;
+
 		// Format is pretty transparent from iw3 to iw4, so no conversion is necessary!
-		json11::Json::array head{};
+		rapidjson::Value head(rapidjson::kArrayType);
 
 		for (size_t i = 0; i < ents->count; i++)
 		{
 			Game::IW3::snd_alias_t iw3Alias = ents->head[i];
 
-			json11::Json::array channelMaps{};
+			rapidjson::Value channelMaps(rapidjson::kArrayType);
 
 			for (size_t j = 0; j < 2; j++)
 			{
 				for (size_t k = 0; k < 2; k++)
 				{
 					auto iw3ChannelMap = iw3Alias.speakerMap->channelMaps[j][k];
-					json11::Json::array speakers{};
+					rapidjson::Value speakers(rapidjson::kArrayType);
 
 					for (size_t speakerIndex = 0; speakerIndex < iw3ChannelMap.speakerCount; speakerIndex++)
 					{
 						auto iw3Speaker = iw3ChannelMap.speakers[speakerIndex];
-						speakers.emplace_back(json11::Json::object{
-							{"levels0", iw3Speaker.numLevels > 0 ? iw3Speaker.levels[0] : 0 },
-							{"levels1", iw3Speaker.numLevels > 1 ? iw3Speaker.levels[1] : 0 },
-							{"numLevels", iw3Speaker.numLevels },
-							{"speaker", iw3Speaker.speaker }
-							});
+
+						rapidjson::Value speaker(rapidjson::kObjectType);
+						speaker.AddMember("levels0", iw3Speaker.numLevels > 0 ? iw3Speaker.levels[0] : 0, allocator);
+						speaker.AddMember("levels1", iw3Speaker.numLevels > 1 ? iw3Speaker.levels[1] : 0, allocator);
+						speaker.AddMember("numLevels", iw3Speaker.numLevels, allocator);
+						speaker.AddMember("speaker", iw3Speaker.speaker, allocator);
+						speakers.PushBack(speaker, allocator);
 					}
 
-					channelMaps.emplace_back(json11::Json::object{
-						{"entryCount", static_cast<int>(iw3ChannelMap.speakerCount)},
-						{"speakers", speakers}
-						});
+					rapidjson::Value channelMap(rapidjson::kObjectType);
+					channelMap.AddMember("entryCount", iw3ChannelMap.speakerCount, allocator);
+					channelMap.AddMember("speakers", speakers, allocator);
+					channelMaps.PushBack(channelMap, allocator);
 				}
 			}
+
+			rapidjson::Value speakerMap(rapidjson::kObjectType);
+			speakerMap.AddMember("channelMaps", channelMaps, allocator);
+			speakerMap.AddMember("isDefault", iw3Alias.speakerMap->isDefault, allocator);
+			speakerMap.AddMember("name", RAPIDJSON_STR(iw3Alias.speakerMap->name), allocator);
 
 			std::string soundFile("");
 			if (iw3Alias.soundFile)
@@ -145,6 +155,11 @@ namespace Components
 					return;
 				}
 			}
+			else
+			{
+				Components::Logger::Print("Error dumping sound alias %s: NULL soundfile!\n", iw3Alias.aliasName);
+				return;
+			}
 
 			// Convert flags
 			IW3SoundAliasFlags iw3Flags;
@@ -168,48 +183,47 @@ namespace Components
 
 			auto iw4Flags = outputFlags.intValue;
 
-			auto alias = json11::Json::object{
-				{"aliasName", iw3Alias.aliasName},
-				{"centerPercentage",iw3Alias.centerPercentage},
-				{"chainAliasName", iw3Alias.chainAliasName == nullptr ? json11::Json() : json11::Json(std::string(iw3Alias.chainAliasName))},
-				{"distMax", iw3Alias.distMax},
-				{"distMin", iw3Alias.distMin},
-				{"envelopMax", iw3Alias.envelopMax},
-				{"envelopMin", iw3Alias.envelopMin},
-				{"envelopPercentage", iw3Alias.envelopPercentage},
-				{"flags", static_cast<signed int>(iw4Flags)},
-				{"lfePercentage", iw3Alias.lfePercentage},
-				{"mixerGroup", json11::Json()},
-				{"pitchMax", iw3Alias.pitchMax},
-				{"pitchMin", iw3Alias.pitchMin},
-				{"probability", iw3Alias.probability},
-				{"secondaryAliasName", iw3Alias.secondaryAliasName == nullptr ? json11::Json() : json11::Json(std::string(iw3Alias.secondaryAliasName))},
-				{"sequence", iw3Alias.sequence},
-				{"slavePercentage", iw3Alias.slavePercentage},
-				{"speakerMap",  json11::Json::object{
-					{"channelMaps", channelMaps},
-					{"isDefault", iw3Alias.speakerMap->isDefault},
-					{"name", iw3Alias.speakerMap->name}
-				}},
-				{"soundFile", _strdup(soundFile.c_str())},
-				{"startDelay", iw3Alias.startDelay},
-				{"subtitle",  iw3Alias.subtitle == nullptr ? json11::Json() : json11::Json(std::string(iw3Alias.subtitle))},
-				{"type", iw3Alias.soundFile->type},
-				{"volMax", iw3Alias.volMax},
-				{"volMin", iw3Alias.volMin},
-				{"volumeFalloffCurve", iw3Alias.volumeFalloffCurve->filename}
-			};
+			rapidjson::Value alias(rapidjson::kObjectType);
+			alias.AddMember("aliasName", RAPIDJSON_STR(iw3Alias.aliasName), allocator);
+			alias.AddMember("centerPercentage",iw3Alias.centerPercentage, allocator);
+			alias.AddMember("chainAliasName", RAPIDJSON_STR(iw3Alias.chainAliasName), allocator);
+			alias.AddMember("distMax", iw3Alias.distMax, allocator);
+			alias.AddMember("distMin", iw3Alias.distMin, allocator);
+			alias.AddMember("envelopMax", iw3Alias.envelopMax, allocator);
+			alias.AddMember("envelopMin", iw3Alias.envelopMin, allocator);
+			alias.AddMember("envelopPercentage", iw3Alias.envelopPercentage, allocator);
+			alias.AddMember("flags", iw4Flags, allocator);
+			alias.AddMember("lfePercentage", iw3Alias.lfePercentage, allocator);
+			alias.AddMember("mixerGroup", rapidjson::Value(rapidjson::kNullType), allocator);
+			alias.AddMember("pitchMax", iw3Alias.pitchMax, allocator);
+			alias.AddMember("pitchMin", iw3Alias.pitchMin, allocator);
+			alias.AddMember("probability", iw3Alias.probability, allocator);
+			alias.AddMember("secondaryAliasName", RAPIDJSON_STR(iw3Alias.secondaryAliasName), allocator);
+			alias.AddMember("sequence", iw3Alias.sequence, allocator);
+			alias.AddMember("slavePercentage", iw3Alias.slavePercentage, allocator);
+			alias.AddMember("speakerMap",speakerMap, allocator);
+			alias.AddMember("soundFile", RAPIDJSON_STR(strDuplicator.duplicateString(soundFile)), allocator);
+			alias.AddMember("startDelay", iw3Alias.startDelay, allocator);
+			alias.AddMember("subtitle", RAPIDJSON_STR(iw3Alias.subtitle), allocator);
+			alias.AddMember("type", iw3Alias.soundFile->type, allocator);
+			alias.AddMember("volMax", iw3Alias.volMax, allocator);
+			alias.AddMember("volMin", iw3Alias.volMin, allocator);
+			alias.AddMember("volumeFalloffCurve", RAPIDJSON_STR(iw3Alias.volumeFalloffCurve->filename), allocator);
 
-			head.emplace_back(alias);
+			head.PushBack(alias, allocator);
 		}
 
-		json11::Json aliasList = json11::Json::object{
-			{"aliasName", ents->aliasName},
-			{"count", static_cast<int>(ents->count)},
-			{"head", head}
-		};
+		output.AddMember("aliasName", RAPIDJSON_STR(ents->aliasName), allocator);
+		output.AddMember("count", ents->count, allocator);
+		output.AddMember("head", head, allocator);
 
-		Utils::WriteFile(Utils::VA("%s/sounds/%s", AssetHandler::GetExportPath().data(), ents->aliasName), aliasList.dump());
+		rapidjson::StringBuffer buff;
+		rapidjson::PrettyWriter<rapidjson::StringBuffer> writer(buff);
+		output.Accept(writer);
+		
+		const auto& dump = buff.GetString();
+
+		Utils::WriteFile(Utils::VA("%s/sounds/%s.json", AssetHandler::GetExportPath().data(), ents->aliasName), dump);
 	}
 
 

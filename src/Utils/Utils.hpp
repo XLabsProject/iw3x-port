@@ -22,6 +22,9 @@ namespace Utils
 	void WriteFile(std::string file, std::string data);
 	std::string ReadFile(std::string file);
 
+	template<class T>
+	rapidjson::Value MakeJsonArray(T* arr, size_t length, rapidjson::MemoryPoolAllocator<rapidjson::CrtAllocator>& allocator);
+
 	bool MemIsSet(void* mem, char chr, size_t length);
 
 	template <typename T> bool CompareNumber(T num1, T num2)
@@ -94,4 +97,18 @@ namespace Utils
 	private:
 		std::vector<Slot<T>> slots;
 	};
+
+	template<class T>
+	rapidjson::Value MakeJsonArray(T* arr, size_t length, rapidjson::MemoryPoolAllocator<rapidjson::CrtAllocator>& allocator)
+	{
+		rapidjson::Value jsonArr(rapidjson::kArrayType);
+
+		for (size_t i = 0; i < length; i++)
+		{
+			rapidjson::Value value(arr[i]);
+			jsonArr.PushBack(value, allocator);
+		}
+
+		return jsonArr;
+	}
 }

@@ -14,6 +14,7 @@
 
 #pragma warning(push)
 #pragma warning(disable: 4244)
+#include <array>
 #include <map>
 #include <mutex>
 #include <string>
@@ -30,6 +31,7 @@
 #include <chrono>
 #include <future>
 #include <unordered_map>
+#include <format>
 #pragma warning(pop)
 
 #define PC
@@ -44,20 +46,25 @@ template <size_t S> class Sizer { };
 // Revision number
 #define STRINGIZE_(x) #x
 #define STRINGIZE(x) STRINGIZE_(x)
+#define RAPIDJSON_STR(str) (str == nullptr ? rapidjson::Value(rapidjson::kNullType) : static_cast<rapidjson::Value>(rapidjson::StringRef(str)))
 
 #define AssertSize(x, size) static_assert(sizeof(x) == size, STRINGIZE(x) " structure has an invalid size.")
 
 // Version number
 #include <version.hpp>
 
-#include <json11.hpp>
 #include <s3tc.h>
+
+#include <rapidjson/document.h>
+#include <rapidjson/prettywriter.h>
+#include <rapidjson/stringbuffer.h>
 
 #include "Utils/Utils.hpp"
 #include "Utils/Memory.hpp"
 #include "Utils/Stream.hpp"
 #include "Utils/Hooking.hpp"
 #include "Utils/Entities.hpp"
+#include "Utils/Base64.hpp"
 
 #include "Game/Structs.hpp"
 #include "Game/Functions.hpp"

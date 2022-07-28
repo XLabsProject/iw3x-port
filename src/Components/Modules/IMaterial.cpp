@@ -1,6 +1,6 @@
 #include "STDInclude.hpp"
 
-#define IW4X_MAT_VERSION "1"
+#define IW4X_MAT_VERSION 1
 
 namespace Components
 {
@@ -46,29 +46,51 @@ namespace Components
 
 	void IMaterial::SaveConvertedMaterial(Game::IW4::Material* asset)
 	{
-		Utils::Stream buffer;
-		buffer.saveArray("IW4xMat" IW4X_MAT_VERSION, 8); // just stick version in the magic since we have an extra char
+		Utils::Memory::Allocator strDuplicator;
+		rapidjson::Document output(rapidjson::kObjectType);
+		auto& allocator = output.GetAllocator();
 
-		buffer.saveObject(*asset);
+		output.AddMember("version", IW4X_MAT_VERSION, allocator);
 
-		if (asset->name)
-		{
-			buffer.saveString(asset->name);
-		}
+		output.AddMember("name", RAPIDJSON_STR(asset->name), allocator);
+
+		const auto gameFlags = std::format("{:b}", asset->gameFlags.packed);
+		output.AddMember("gameFlags", RAPIDJSON_STR(gameFlags.c_str()), allocator);
+
+		const auto stateFlags = std::format("{:b}", static_cast<char>(asset->stateFlags));
+		output.AddMember("stateFlags", RAPIDJSON_STR(stateFlags.c_str()), allocator);
+
+#define SAME_NAME_JSON_MEMBER(x) output.AddMember(#x, asset->x, allocator)
+
+		SAME_NAME_JSON_MEMBER(sortKey);
 
 		if (asset->techniqueSet)
 		{
-			buffer.saveString(asset->techniqueSet->name);
-            AssetHandler::Dump(Game::XAssetType::ASSET_TYPE_TECHNIQUE_SET, { asset->techniqueSet });
+			output.AddMember("techniqueSet", RAPIDJSON_STR(asset->techniqueSet->name), allocator);
+			AssetHandler::Dump(Game::XAssetType::ASSET_TYPE_TECHNIQUE_SET, { asset->techniqueSet });
 		}
+
+
+		SAME_NAME_JSON_MEMBER(textureAtlasRowCount);
+		SAME_NAME_JSON_MEMBER(textureAtlasColumnCount);
+
+		const auto surfaceTypeBits = std::format("{:b}", asset->surfaceTypeBits);
+		output.AddMember("surfaceTypeBits", RAPIDJSON_STR(surfaceTypeBits.c_str()), allocator);
+
+		rapidjson::Value textureTable(rapidjson::kArrayType);
 
 		if (asset->textureTable)
 		{
-			buffer.saveArray(asset->textureTable, asset->textureCount);
-
 			for (char i = 0; i < asset->textureCount; ++i)
 			{
 				Game::IW3::MaterialTextureDef* textureDef = &asset->textureTable[i];
+				rapidjson::Value textureJson(rapidjson::kObjectType);
+
+				textureJson.AddMember("nameStart", textureDef->nameStart, allocator);
+				textureJson.AddMember("nameEnd", textureDef->nameEnd, allocator);
+				textureJson.AddMember("nameHash", textureDef->nameHash, allocator);
+				textureJson.AddMember("samplerState", textureDef->samplerState, allocator); // $6961E030A9677F7C86FC6FF9B5901495
+				textureJson.AddMember("semantic", textureDef->semantic, allocator);
 
 				if (textureDef->semantic == TS_WATER_MAP)
 				{
@@ -78,40 +100,100 @@ namespace Components
 
 					if (water)
 					{
-						buffer.saveObject(*water);
+						rapidjson::Value waterJson(rapidjson::kObjectType);
+
+						if (water->image)
+						{
+							waterJson.AddMember("image", RAPIDJSON_STR(water->image->name), allocator);
+							AssetHandler::Dump(Game::XAssetType::ASSET_TYPE_IMAGE, { water->image });
+						}
 
 						// Save_water_t
 						if (water->H0)
 						{
-							buffer.saveArray(water->H0, water->M * water->N);
+							auto buffer = std::vector<uint8_t>(water->M * water->N * sizeof(Game::IW3::complex_s));
+							memcpy_s(&buffer, buffer.size(), water->H0, buffer.size());
+
+							waterJson.AddMember("H0", RAPIDJSON_STR(strDuplicator.duplicateString(Utils::Base64::Encode(buffer))), allocator);
 						}
 
 						if (water->wTerm)
 						{
-							buffer.saveArray(water->wTerm, water->M * water->N);
+							auto buffer = std::vector<uint8_t>(water->M * water->N * sizeof(float));
+							memcpy_s(&buffer, buffer.size(), water->wTerm, buffer.size());
+
+							waterJson.AddMember("wTerm", RAPIDJSON_STR(strDuplicator.duplicateString(Utils::Base64::Encode(buffer))), allocator);
 						}
 
-						if (water->image)
-						{
-							buffer.saveString(water->image->name);
-							AssetHandler::Dump(Game::XAssetType::ASSET_TYPE_IMAGE, { water->image });
-						}
+						#define SAME_NAME_WATER_MEMBER(x) waterJson.AddMember("x", water->x, allocator)
+
+						SAME_NAME_WATER_MEMBER(M);
+						SAME_NAME_WATER_MEMBER(N);
+						SAME_NAME_WATER_MEMBER(Lx);
+						SAME_NAME_WATER_MEMBER(Lz);
+						SAME_NAME_WATER_MEMBER(gravity);
+						SAME_NAME_WATER_MEMBER(windvel);
+						waterJson.AddMember("winddir", Utils::MakeJsonArray(water->winddir, 2, allocator), allocator);
+
+						SAME_NAME_WATER_MEMBER(amplitude);
+						waterJson.AddMember("codeConstant", Utils::MakeJsonArray(water->codeConstant, 4, allocator), allocator);
+
+
+						textureJson.AddMember("water", waterJson, allocator);
 					}
 				}
 				else if (textureDef->u.image)
 				{
-					buffer.saveString(textureDef->u.image->name);
+					textureJson.AddMember("image", RAPIDJSON_STR(textureDef->u.image->name), allocator);
 					AssetHandler::Dump(Game::XAssetType::ASSET_TYPE_IMAGE, { textureDef->u.image });
 				}
+
+				textureTable.PushBack(textureJson, allocator);
 			}
 		}
 
+		output.AddMember("textureTable", textureTable, allocator);
+
+		rapidjson::Value gfxDrawSurface(rapidjson::kObjectType);
+
+#define SAME_NAME_GFXDRAWSURF_MEMBER(x) gfxDrawSurface.AddMember(#x, asset->drawSurf.fields.##x##, allocator)
+
+		SAME_NAME_GFXDRAWSURF_MEMBER(objectId);
+		SAME_NAME_GFXDRAWSURF_MEMBER(reflectionProbeIndex);
+		SAME_NAME_GFXDRAWSURF_MEMBER(hasGfxEntIndex);
+		SAME_NAME_GFXDRAWSURF_MEMBER(customIndex);
+		SAME_NAME_GFXDRAWSURF_MEMBER(materialSortedIndex);
+		SAME_NAME_GFXDRAWSURF_MEMBER(prepass);
+		SAME_NAME_GFXDRAWSURF_MEMBER(useHeroLighting);
+		SAME_NAME_GFXDRAWSURF_MEMBER(sceneLightIndex);
+		SAME_NAME_GFXDRAWSURF_MEMBER(surfType);
+		SAME_NAME_GFXDRAWSURF_MEMBER(primarySortKey);
+		SAME_NAME_GFXDRAWSURF_MEMBER(unused);
+
+		output.AddMember("gfxDrawSurface", gfxDrawSurface, allocator);
+
+		SAME_NAME_JSON_MEMBER(hashIndex);
+
+		rapidjson::Value stateBitsEntry(rapidjson::kArrayType);
+		for (size_t i = 0; i < 48; i++)
+		{
+			stateBitsEntry.PushBack(asset->stateBitsEntry[i], allocator);
+		}
+
+		output.AddMember("stateBitsEntry", stateBitsEntry, allocator);
+
+		SAME_NAME_JSON_MEMBER(cameraRegion);
+
 		if (asset->constantTable)
 		{
+			rapidjson::Value constantTable(rapidjson::kArrayType);
+
 			for (char i = 0; i < asset->constantCount; ++i)
 			{
 				Game::IW3::MaterialConstantDef constantDef;
 				std::memcpy(&constantDef, &asset->constantTable[i], sizeof Game::IW3::MaterialConstantDef);
+
+				rapidjson::Value constantDefJson(rapidjson::kObjectType);
 
 				// This is like the ugliest fix i could come up with.
 				// I'm way to sick to even understand what MaterialConstantDef actually contain
@@ -124,16 +206,35 @@ namespace Components
 					constantDef.literal[3] *= 3.2f;
 				}
 
-				buffer.saveObject(constantDef);
+				// "detailScale" might need some work too 🤔
+
+				constantDefJson.AddMember("nameHash", constantDef.nameHash, allocator);
+				constantDefJson.AddMember("name", RAPIDJSON_STR(strDuplicator.duplicateString(constantDef.name)), allocator);
+				constantDefJson.AddMember("literal", Utils::MakeJsonArray(constantDef.literal, 4, allocator), allocator);
+
+				constantTable.PushBack(constantDefJson, allocator);
 			}
+
+			output.AddMember("constantTable", constantTable, allocator);
 		}
 
+		std::string b64;
 		if (asset->stateBitTable)
 		{
-			buffer.saveArray(asset->stateBitTable, asset->stateBitsCount);
+			auto size = asset->stateBitsCount * sizeof(Game::IW3::GfxStateBits);
+			auto* statebitsHead = reinterpret_cast<std::uint8_t*>(asset->stateBitTable);
+			auto buffer = std::vector<uint8_t>(statebitsHead, statebitsHead+size);
+
+			b64 = Utils::Base64::Encode(buffer);
+			const char* data = b64.data();
+			output.AddMember("stateBitsTable", RAPIDJSON_STR(data), allocator);
 		}
 
-		Utils::WriteFile(Utils::VA("%s/materials/%s.iw4xMaterial", AssetHandler::GetExportPath().data(), asset->name), buffer.toBuffer());
+		rapidjson::StringBuffer buff;
+		rapidjson::PrettyWriter<rapidjson::StringBuffer> writer(buff);
+		output.Accept(writer);
+
+		Utils::WriteFile(Utils::VA("%s/materials/%s.iw4x.json", AssetHandler::GetExportPath().data(), asset->name), buff.GetString());
 	}
 
 	void IMaterial::Dump(Game::IW3::Material* material)

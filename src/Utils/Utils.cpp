@@ -240,6 +240,7 @@ namespace Utils
 		return buffer;
 	}
 
+
 	// Infostring class
 	void InfoString::Set(std::string key, std::string value)
 	{
